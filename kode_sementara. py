@@ -1,0 +1,163 @@
+import network
+import time
+import machine
+import _thread
+import threading
+
+#Konfigurasi WiFi
+SSID_ASLI = "Ap"
+SSID_AP = "baguschoiri"
+PASSWORD_ASLI = "1234567891"
+PASSWORD_AP = "12345678"
+SSID_REPEATER = SSID_ASLI + "Repeater"
+PASSWORD_REPEATER = PASSWORD_ASLI
+IP_AP = "192.168.1.1"
+SUBNET_MASK = "255.255.255.0"
+GATEWAY = "192.168.1.1"
+DNS = "8.8.8.8"
+wlan_ap = network.WLAN(network.AP_IF)
+wlan_sta = network.WLAN(network.STA_IF)
+
+#Konfigurasi LED
+LED_PIN = 2
+LED_ON = 1
+LED_OFF = 0
+
+#Inisialisasi WiFi dan LED
+led = machine.Pin(LED_PIN, machine.Pin.OUT)
+
+
+def ap_on1():
+    try:
+        sta_off()
+        wlan_ap.active(True)
+        wlan_ap.config(essid=SSID_AP, password=PASSWORD_AP)
+        wlan_ap.ifconfig((IP_AP, SUBNET_MASK, GATEWAY, DNS))
+        print("Access Point aktif")
+    except Exception as e:
+        print("Gagal mengaktifkan Access Point:", e)
+
+def ap_on():
+    try:
+        wlan_ap.active(True)
+        wlan_ap.config(essid=SSID_REPEATER, password=PASSWORD_REPEATER)
+        print("Repeater aktif")
+    except Exception as e:
+        print("Gagal mengaktifkan REPEATER:", e)
+
+def ap_off():
+    try:
+        wlan_ap.active(False)
+        print("Access Point mati")
+    except Exception as e:
+        print("Gagal mematikan Access Point:", e)
+
+def sta_on():
+    try:
+        wlan_sta.active(True)
+        wlan_sta.ifconfig(('192.168.1.100', '255.255.255.0', '192.168.1.1', '8.8.8.8'))
+        print("Mode WIFI aktif")
+    except Exception as e:
+        print("Gagal mengaktifkan Station mode:", e)
+
+def sta_off():
+    try:
+        wlan_sta.active(False)
+        print("Mode WIFI mati")
+    except Exception as e:
+        print("Gagal mematikan Station mode:", e)
+
+def led_berkedip():
+    while True:
+        led.value(LED_ON)
+        time.sleep(0.5)
+        led.value(LED_OFF)
+        time.sleep(0.5)
+
+def led_menyala():
+    led.value(LED_ON)
+
+def led_matikan():
+    led.value(LED_OFF)
+
+def cek_koneksiWIFI(timeout=10):
+    if wlan_sta.isconnected():
+        print("Terhubung ke WiFi tujuan")
+        return True
+    else:
+        print("Gagal terhubung ke WiFi tujuan")
+        return False
+
+def cek_koneksi_ap():
+    if wlan_ap.active():
+        status = wlan_ap.status('stations')
+        if status:
+            print("Perangkat terhubung ke Access Point:")
+            for i, station in enumerate(status):
+                mac_address = station[0]
+                print(f" - Perangkat {i+1}:")
+                print(f"  - MAC Address: {mac_address}")
+                # Anda dapat menambahkan informasi lain jika perlu
+        else:
+            print("Tidak ada perangkat yang terhubung ke Access Point.")
+    else:
+        print("Access Point belum aktif.")
+        
+def cek_koneksi_ap_thread():
+    lock = threading.Lock()
+    while True:
+        with lock:
+            try:
+                if cek_koneksi_ap():
+                    _thread.start_new_thread(led_berkedip, ())
+                else:
+                    led_menyala()
+            except Exception as e:
+                print(f"Kesalahan: {e}")
+        time.sleep(10)
+
+def main():
+    max_attempt = 5
+    attempt = 0
+
+    while attempt < max_attempt:
+        if not cek_koneksiWIFI():
+            print(f"Mencoba menyambugkan WiFi ({attempt+1}/{max_attempt})...")
+            print("Me mulai ulang WiFi")
+            time.sleep(2)
+            sta_off()
+            led_matikan()
+            time.sleep(3)
+            sta_on()
+            led_menyala()
+            wlan_sta.connect(SSID_ASLI, PASSWORD_ASLI)
+            time.sleep(5)
+            attempt += 1
+        else:
+            ap_on()
+            print("SSID:", wlan_sta.config('essid'))
+            print("IP:", wlan_sta.ifconfig()[0])
+            print("Netmask:", wlan_sta.ifconfig()[1])
+            print("Gateway:", wlan_sta.ifconfig()[2])
+            print("Repeater:", SSID_REPEATER)
+            print("Password:", PASSWORD_REPEATER)
+            led_matikan()
+            _thread.start_new_thread(led_berkedip, ())
+            break
+    else:
+        print("Gagal terhubung ke WiFi yang di tuju setelah", max_attempt, "percobaan.")
+        led_matikan()
+        time.sleep(3)
+        led_menyala()
+        print("menyalakan acsespoin")
+        ap_on1()
+        time.sleep(1)
+        led_matikan()
+        print("Access Point:", SSID_AP)
+        print("Sandi:", PASSWORD_AP)
+
+    # Cek koneksi Access Point
+    _thread.start_new_thread(cek_koneksi_ap_thread, ())
+
+if __name__ == "__main__":
+    main()
